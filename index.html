@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Matrix Multiplication - Threads Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
+    h1 { text-align: center; font-size: 22px; margin-bottom: 4px; }
+    .note { text-align: center; color: #666; margin-bottom: 16px; }
+    .controls { text-align: center; margin-bottom: 10px; }
+    .controls input { width: 80px; padding: 6px; margin: 0 8px 0 4px; }
+    .controls button { padding: 7px 16px; background: #1976d2; color: #fff; border: none; cursor: pointer; }
+    .controls button:disabled { background: #999; }
+    #error { text-align: center; color: #c00; min-height: 18px; }
+    .row { display: flex; justify-content: center; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .box { text-align: center; }
+    .box h3 { margin: 0 0 6px; }
+    canvas { width: 280px; height: 280px; border: 1px solid #aaa; background: #fff; image-rendering: pixelated; }
+    .sign { font-size: 32px; font-weight: bold; }
+    .status { max-width: 900px; margin: 16px auto 0; background: #fff; padding: 12px 16px; border-top: 4px solid #1976d2; font-family: Consolas, monospace; }
+    .status small { color: #666; font-family: Arial, sans-serif; }
+  </style>
+</head>
+<body>
+
+<h1>Matrix Multiplication using Threads (TensorFlow)</h1>
+<p class="note">Browser demo of matrix_animation.py: every cell C[i][j] is one task (row i of A &middot; column j of B)</p>
+
+<div class="controls">
+  Rows <input id="rows" type="number" value="100" min="100">
+  Columns <input id="cols" type="number" value="100" min="100">
+  <button id="startBtn">Start</button>
+</div>
+<div id="error"></div>
+
+<div class="row">
+  <div class="box"><h3>A</h3><canvas id="cA"></canvas></div>
+  <div class="sign">&times;</div>
+  <div class="box"><h3>B</h3><canvas id="cB"></canvas></div>
+  <div class="sign">=</div>
+  <div class="box"><h3>C</h3><canvas id="cC"></canvas></div>
+</div>
+
+<div class="status">
+  <div id="progress">Press Start</div>
+  <div id="current"></div>
+  <small>red line on A = current row, red line on B = current column, C gets filled as tasks finish</small>
+</div>
+
+<script>
+var STEPS_PER_FRAME = 25;
+
+var A, B, C, filled;
+var rows, cols;
+var tasks = [];
+var next = 0;
+
+function randMatrix(r, c) {
+  var m = [];
+  for (var i = 0; i < r; i++) {
+    m.push([]);
+    for (var j = 0; j < c; j++) m[i].push(1 + Math.floor(Math.random() * 9));
+  }
+  return m;
+}
+
+function draw(canvas, m, r, c, rgb, max, mask) {
+  canvas.width = c;
+  canvas.height = r;
+  var ctx = canvas.getContext("2d");
+  var img = ctx.createImageData(c, r);
+  var d = img.data;
+  for (var i = 0; i < r; i++) {
+    for (var j = 0; j < c; j++) {
+      var p = (i * c + j) * 4;
+      if (mask && !mask[i][j]) {
+        d[p] = d[p + 1] = d[p + 2] = 255;       // not computed yet -> white
+      } else {
+        var t = m[i][j] / max;
+        d[p]     = 255 - t * (255 - rgb[0]);
+        d[p + 1] = 255 - t * (255 - rgb[1]);
+        d[p + 2] = 255 - t * (255 - rgb[2]);
+      }
+      d[p + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function redLine(canvas, index, horizontal) {
+  var ctx = canvas.getContext("2d");
+  ctx.fillStyle = "red";
+  if (horizontal) ctx.fillRect(0, index, canvas.width, 1);
+  else ctx.fillRect(index, 0, 1, canvas.height);
+}
+
+function computeCell(i, j) {
+  var sum = 0;
+  for (var k = 0; k < cols; k++) sum += A[i][k] * B[k][j];
+  C[i][j] = sum;
+}
+
+function frame() {
+  var i, j;
+  for (var s = 0; s < STEPS_PER_FRAME && next < tasks.length; s++) {
+    i = tasks[next][0];
+    j = tasks[next][1];
+    computeCell(i, j);
+    filled[i][j] = true;
+    next++;
+  }
+
+  draw(cA, A, rows, cols, [25, 80, 160], 9);
+  redLine(cA, i, true);
+  draw(cB, B, cols, cols, [30, 130, 60], 9);
+  redLine(cB, j, false);
+  draw(cC, C, rows, cols, [200, 40, 20], cols * 81, filled);
+
+  progress.textContent = "done " + next + " / " + tasks.length;
+  current.textContent = "C[" + i + "][" + j + "] = " + C[i][j];
+
+  if (next < tasks.length) {
+    requestAnimationFrame(frame);
+  } else {
+    progress.textContent = "Finished - " + tasks.length + " cells calculated";
+    current.textContent = "C[0][0]=" + C[0][0] + "  C[0][1]=" + C[0][1] + "  C[1][0]=" + C[1][0];
+    startBtn.disabled = false;
+    startBtn.textContent = "Run again";
+  }
+}
+
+function start() {
+  rows = parseInt(document.getElementById("rows").value);
+  cols = parseInt(document.getElementById("cols").value);
+  if (isNaN(rows) || isNaN(cols) || rows < 100 || cols < 100) {
+    error.textContent = "Rows and columns must be at least 100";
+    return;
+  }
+  error.textContent = "";
+  startBtn.disabled = true;
+
+  A = randMatrix(rows, cols);
+  B = randMatrix(cols, cols);
+  C = [];
+  filled = [];
+  tasks = [];
+  for (var i = 0; i < rows; i++) {
+    C.push(new Array(cols).fill(0));
+    filled.push(new Array(cols).fill(false));
+    for (var j = 0; j < cols; j++) tasks.push([i, j]);
+  }
+  next = 0;
+  progress.textContent = "created " + tasks.length + " tasks";
+  requestAnimationFrame(frame);
+}
+
+document.getElementById("startBtn").onclick = start;
+</script>
+</body>
+</html>
