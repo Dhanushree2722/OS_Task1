@@ -230,7 +230,6 @@ The animation has three panels:
 - 🟠 **Matrix C** – result cells appear as the recorded tasks complete, 25 per frame.
 
 ### 🎥 Animation Output
-<img width="770" height="280" alt="Matrix_multiplication" src="https://github.com/user-attachments/assets/042acdc3-7d6a-4883-96a4-36f4f9f2091d" />
 
 ![Matrix Multiplication Animation](Matrix_multiplication.gif)
 
